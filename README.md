@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # yeslast
 
 # DREAMPlace
@@ -641,3 +642,6 @@ Our modified version can be downloaded from [here](https://www.dropbox.com/scl/f
 </table>
 `*` denotes divergence or legalization failure. 
 Note that if you observe divergence or legalization errors in the log, then the results may not be representative. 
+=======
+# yeslast
+>>>>>>> ac4d3874fcab6b90dd7e06b1f23bb80ab4c053bb
