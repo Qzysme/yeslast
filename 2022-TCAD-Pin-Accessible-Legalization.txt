@@ -1,0 +1,1111 @@
+--- Page 1 ---
+IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, VOL. 41, NO. 1, JANUARY 2022 143
+Pin-Accessible Legalization for
+Mixed-Cell-Height Circuits
+Haocheng Li , Wing-Kai Chow ,Member, IEEE , Gengjie Chen ,B e iY u ,Member, IEEE ,a n d
+Evangeline F.Y . Young, Senior Member, IEEE
+Abstract Placement is one of the most critical stages in
+the physical synthesis flow. Circuits with increasing numbersof cells of multirow height have brought challenges to tradi-tional placers on efficiency and effectiveness. Besides providing anoverlap-free solution close to the global placement (GP) solution,constraints on power and ground (P/G) alignments, fence region,and routability (e.g., edge spacing and pin short/inaccessible)should be considered. In this article, we propose a legaliza-tion method for mixed-cell-height circuits by a window-basedcell insertion technique and two post-processing network flow-based optimizations. Compared with the champion of the ICCAD2017 Contest, our algorithm achieves 35% and 13% less average
+and maximum displacement, respectively, as well as signifi-
+cantly fewer routability violations. Comparing our algorithmwith the state-of-the-art algorithms on this problem, there isan 8% improvement in average displacement with comparablemaximum displacement. The source code of our legalization isavailable at https://github.com/cuhk-eda/ripple.
+Index Terms Bipartite matching, legalization, linear program-
+ming, network flow algorithm, overlap removal, placement.
+I. I NTRODUCTION
+STANDARD cells are designed with the same height and
+aligned on placement sites for the simplicity of physical
+synthesis. With the globalized design and fabrication of inte-
+grated circuits, the semiconductor feature size continuouslyshrinks down to three nanometers [2]. However, the num-
+ber of in-cell tracks diminishes significantly and the internal
+routability within a single-site-high cell becomes inadequate.In subfive-nanometer technology nodes, there are placement
+sites of just three-track-high [3], which results in design dif-
+ficulties of complex standard cells with high driving strength,such as multiplexers [4] and multibit flip-flops [5]. On the
+other hand, cell area is wasted in the region for N-type transis-
+tors when large cell width is required by P-type transistors to
+achieve similar rise and fall transition time [6]. For ascending
+Manuscript received May 21, 2020; revised August 20, 2020 and November
+14, 2020; accepted December 28, 2020. Date of publication January 21, 2021;
+date of current version December 23, 2021. This work was supported in partby the Research Grants Council of Hong Kong Special Administrative Region,China, under Project CUHK 14202218. This work is an extension of [1]. This
+article was recommended by Associate Editor I. H.-R. Jiang. (Corresponding
+author: Haocheng Li.)
+Haocheng Li, Gengjie Chen, Bei Yu, and Evangeline F.Y . Young are
+with the Department of Computer Science and Engineering, Chinese
+University of Hong Kong, Hong Kong (e-mail: hcli@cse.cuhk.edu.hk;
+gjchen@cse.cuhk.edu.hk; byu@cse.cuhk.edu.hk; fyyoung@cse.cuhk.edu.hk).
+Wing-Kai Chow is with Cadence Design Systems, Austin, TX 78759 USA
+(e-mail: wkchow@cadence.com).
+Digital Object Identifier 10.1109/TCAD.2021.3053223performance and efficiency, complex cells are now designed
+with multirow height and two-layer metal routing while simple
+cells remain single-row height and one-layer metal routing [7].
+Consequently, the challenges in physical synthesis migratefrom cell design to cell placement.
+As the name suggested, the placement stage of physical
+synthesis allocates standard cells on sites of the core area.Traditionally, placement consists of three steps: 1) global
+placement (GP); 2) legalization; and 3) detailed placement. GP
+imports cells from the netlist and spreads the cells optimiz-ing wirelength with analytical models [8]. Multiple objectives
+are considered, including congestion, timing, and power, but
+physical constraints, such as overlapping, site alignment, and
+special net connection, are neglected. The physical constraints
+are instead resolved in the later step, legalization, where thequality of GP solution is preserved as much as possible, i.e.,
+the average displacement of cells is minimized [9]. Finally,
+further refinement is conducted in detailed placement wherethe physical constraints are satisfied and wirelength is further
+reduced [10]. Therefore, the introduction of mix-cell-height
+circuits migrates most of the problems to the legalization step.
+The previous works on legalization algorithms for mixed-
+cell-height circuits can be categorized into four types. The ear-
+lier literature converts the mixed-cell-height circuit legalizationproblem into a single-cell-height problem. Wu and Chu [11]
+constructed artificial double-row cells from pairs of single-
+row cells by graph matching and conducted a double-rowdetailed placement on cells with the same double-row height.
+They consider width difference, cell connectivity, and displace-
+ment in the weight of graph edges. This method is under the
+assumption that all double-row-high cells have the same power
+and ground (P/G) rail configuration. While maintaining thecell area, Dobre et al. [12] modified the mixed-cell-height
+library to have the same height with the shortest cell and
+partitioned the floorplan based on an initial placement solu-tion conducted by the modified same-cell-height library and
+conventional detailed placement algorithms. A particular cell
+height is then specified to each partition and conventionaldetailed placement algorithms are performed again for each
+partition. Its limitation is that all cell functions should have
+implementations in every cell height. The empirical resultsshow that mixed-cell-height designs achieve area and power
+reduction compared with same-cell-height designs but cell
+height swapping is required in this procedure and, as a strongand unnecessary constraint, selecting the same cell height
+for each floorplan partition affects the estimation of timing
+1937-4151 c/circlecopyrt2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 2 ---
+144 IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, VOL. 41, NO. 1, JANUARY 2022
+and power in logic synthesis and highly restricts the solution
+space.
+Similar to the single-cell-height circuit legalizer Tetris [13]
+and dynamic-programming-based Abacus [14], the second
+type of mixed-cell-height circuit legalization algorithmshonors the horizontal cell order of GP. For example,
+Wang et al. [15] extended Abacus and optimized a quadratic
+programming (QP) of multirow cells. A number of cell pinsare regarded as the weight of the quadratic cell displacement
+to restrict the wirelength overhead. They legalize cells from
+left to right and evaluate the legalization cost of each cell inevery neighboring row. The cost of dead space is discussed
+in this method with six cases, which is time consuming com-
+pared with other methods. Chen et al. [16] proposed a much
+faster method by relaxing the constraint of right boundary and
+dividing multirow cells into multiple single-row cells whoseadjacency is guaranteed by Lagrangian relaxation. By apply-
+ing the KarushKuhnTucker (KKT) conditions, the quadratic
+legalization problem is then transformed into a linear com-plementary problem (LCP) and solved by the modulus-based
+matrix splitting iteration method (MMSIM) whose conver-
+gence requires the just-mentioned separated formulation ofmultirow cells. The cells placed outside of right boundary
+are finally resolved by a Tetris-like method, which results in
+large maximum displacement for dense designs with irregu-lar fence shapes. To resolve the effect of locally dense area,
+Zhu et al. [17] proposed a movement-aware cell reassign-
+ment method. After initially solving the quadratic legaliza-tion problem by MMSIM, disruptive cells are identified and
+reassigned toward sparse areas. MMSIM is then repeatedly
+conducted until the objective function has no further improve-
+ment. However, maintaining the cell order of GP loses solution
+space and may cause poor results especially for dense designs.
+The third type is free from the artificial restriction on cell
+order. Chow et al. [18] proposed a multirow local legaliza-
+tion (MLL) algorithm where cells are legalized sequentially.When legalizing a target cell, the row assignments and relative
+order of previously legalized cells are maintained. In a win-
+dow around the GP location of the target cell, different rowassignments and insertion points of the target cell are explored
+and the total displacement is minimized by shifting cells in the
+local region horizontally. Its major limitation is that the latera cell is placed, the higher potential exists for the cell to be
+placed with large displacement. In addition, the minimized dis-
+placement is w.r.t. the current locations of local cells, whichcan be accumulated to large displacements w.r.t. GP locations
+after many iterations. MrDP [19] proposes a wirelength-driven
+legalization based on a chain move scheme and extends a dualmin-cost flow (MCF) method [20] from single-row to multirow
+cells for postrefinement. A potential problem is that using half-
+perimeter wire-length (HPWL) instead of displacement as the
+objective function in legalization may disturb other objectives
+optimized in GP.
+There are some recent works that legalize mixed-cell-height
+circuits with additional constraints, such as IR drop mitiga-
+tion [21] and half-row fragmentation [22]. However, none ofthe previous work solve the problem comprehensively. Some
+of them target at minimizing HPWL while some focus on thetotal displacement, but none of them simultaneously handle
+other important measures and constraints, such as the exis-tence of fence region and routability issues, which include pin
+inaccessible, pin short, and edge spacing.
+In this article, we present a fast and high-quality legaliza-
+tion framework for standard cells with mixed cell heights,
+which outperforms the state of the art under the displace-
+ment objective. Our legalizer optimizes both the maximum andaverage displacement. It also considers fences and routability
+constraints, minimizing the number of violations. Our major
+contributions are as follows.
+1) We develop a mixed-cell-height circuit legalizer opti-
+mizing the maximum and average displacement with
+constraints on fences, edge spacing, and pin accessibil-
+ity.
+2) We devise a thread-safe method called multirow global
+legalization (MGL) that inserts a cell optimally into a
+window, minimizing the average displacement of all the
+cells in the region from their GP instead of their currentpositions.
+3) An iterative bipartite graph matching is devised to min-
+imize the maximum displacement among a group ofcells that can exchange their positions without creating
+additional violations.
+4) We extend the MCF formulation of the fixed-row-and-
+order problem to the one that optimizes a weighted sum
+of the maximum and average displacement, with range
+constraints on the cell movements to avoid pin short andpin access violations.
+The remainder of this article is organized as follows.
+Section II illustrates the problem formulation and constraints.
+Section III provides a detailed explanation of our proposed
+techniques. Section IV verifies the effectiveness of ourapproach, followed by a conclusion in Section V.
+II. P
+ROBLEM FORMULATION
+Given a set of mmultirow height cells C={c1,c2,..., cm}.
+The cell height and displacement are measured in terms of the
+multiple of single row height. Let Hbe the set of cell height,
+andChCbe the set of cells whose height is h. The problem
+is to place each cell cifrom GP (x/prime
+i,y/prime
+i)into(xi,yi)with a
+corresponding displacement:
+i=xi+yi=/vextendsingle/vextendsinglexix/prime
+i/vextendsingle/vextendsingle+/vextendsingle/vextendsingleyiy/prime
+i/vextendsingle/vextendsingle (1)
+such that the maximum and average displacement is mini-
+mized:
+Sam=1
+|H|/summationdisplay
+hH1
+|Ch|/summationdisplay
+ciChi (2)
+which is the metric used in the ICCAD 2017 Contest [9].
+Multirow height cells provide high driving strength so that
+they potentially supply more fanouts and are more critical in
+timing. Being minorities, the displacement of multirow cellsis better honored. Besides, this objective can better verify the
+effectiveness of legalizers on cells of any height.
+Besides, cells should be overlap free and aligned to place-
+ment sites of the chip. The P/G alignment and the fence region
+constraint are treated as hard constraints:
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 3 ---
+LIet al. : PIN-ACCESSIBLE LEGALIZATION FOR MIXED-CELL-HEIGHT CIRCUITS 145
+Fig. 1. Pin access and pin short.
+Fig. 2. Proposed legalization flow.
+1) Cells with even cell heights must be placed in alternate
+rows with aligned P/G rails [18];
+2) Cells assigned to a fence region must be placed inside
+the fence boundary [23].
+Note that there is no restriction on the row assignments forcells of odd cell height because they can be flipped vertically
+to correctly align with the P/G rails.
+We divide the routability violations of cell pins in two cat-
+egories and consider them as soft constraints [24]. Intercell
+pin short or spacing violations are modeled as edge spac-
+ing. Violations with P/G grids and input/output (I/O) pins are
+modeled as pin short or pin access violations.
+1) An edge-type rule is specific to neighboring vertical-
+edge pairs of cell instances. Cell edges particularly refers
+to vertical edges of cells and are categorized into cell
+edge types . A minimum spacing is required between any
+two cell edge types.
+2) Signal pins of cells should be able to connect with vias
+or regular wires without creating violations. If a signalpin is short or inaccessible due to the P/G grids and I/O
+pins, there may not be available access point for the pin
+in detailed routing.
+In the modern chip design, the P/G rails are usually regular
+grids running horizontally or vertically in alternate metal lay-
+ers. Note that a signal pin on metal layer kis short if it overlaps
+with a P/G rail or an I/O pin on metal layer k. A signal pin is
+inaccessible if it cannot be accessed by a regular wire without
+creating violations on metal layer kor it cannot be accessed
+by a via without creating violations on metal layer k+1. As
+shown in Fig. 1, the left pin on metal layer one (M1) has pin
+access problem with the rail on metal layer two (M2), and the
+M2 pin is short with the M2 rail.
+III. A
+LGORITHMS
+The overall algorithmic flow is illustrated in Fig. 2, which
+consists of three stages.
+1) Given a GP solution with multicell-height circuits, we
+first legalize it by MGL, which inserts the cells into theplacement region. Note that a cell may belong to a spe-
+cific fence region. Cells that do not belong to any fenceFig. 3. Comparison between MLL and our purposed MGL. (a) GP. (b) Four
+cells legalized; Final results of minimizing the total displacement w.r.t.
+(c) current locations (MLL) and (d) GP locations (MGL).
+regions are placed in the default fence region, which is
+outside all other given fence regions.
+2) Next, the maximum displacement is optimized by swap-
+ping cells of the same type in the same fence region.
+The displacement cost function is linear at the begin-
+ning and exponential afterward to maintain the averagedisplacement at the same time.
+3) Finally, keeping the rows and cell order unchanged, the
+average and maximum displacement is further optimized
+by linear programming.
+Details of these three major steps are explained in the follow-ing sections.
+A. Legalization
+In this section, we will introduce the MGL method, which
+legalizes cells sequentially to minimize the average and max-imum displacement from the given GP positions.
+Inspired by MLL [18], MGL legalizes cells sequentially.
+Different from MLL that calculates displacement based on
+the current cell locations and can eventually accumulate a
+large displacement w.r.t. GP locations, MGL minimizes thedisplacement from GP locations directly. Fig. 3 illustrates an
+example, where the given GP positions are shown in Fig. 3(a).
+Suppose cells c
+1c4are legalized before inserting target cell
+ctas in Fig. 3(b), which already has a total displacement
+of two. In Fig. 3(c), MLL optimizes the total displacement
+w.r.t. current locations and achieves a value of one. However,the total displacement from GP position is actually three.
+Fig. 3(d) shows the result with minimized total displacement
+from GP positions (i.e., two) produced by MGL.
+Algorithm 1 shows the flow of MGL. When legalizing a
+target cell c
+t,awindow r taround its GP position (x/prime
+t,y/prime
+t)is con-
+sidered. Meanwhile, legalized cells that lie completely withinr
+tare referred to as local cells , which can be shifted for legaliz-
+ingct. In MGL, the row and order assignment of local cells are
+fixed, but those of ctare enumerated and evaluated. With row
+and relative order of local cells fixed, inserting ctwith height
+htimplies that we need to place ctin some gaps between
+the legalized cells in htconsecutive rows. A combination of
+those gaps for inserting ctis an insertion point . For a given
+ctandrt, MGL first obtains all the legal insertion points by
+using the enumerating method in [18] (line 1). It then calcu-
+lates the optimal displacement cost of all the insertion points
+(lines 210). The displacement curve, which represents thecost of each insertion point with varied x-coordinate of c
+t, can
+be constructed by adding up all displacement curves of the
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 4 ---
+146 IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, VOL. 41, NO. 1, JANUARY 2022
+Algorithm 1 MGL
+Require: Window rt, GP position (x/prime
+t,y/prime
+t)of target cell ct.
+Ensure: Legal positions of ctand local cells.
+1:Find candidate insertion points {pi}inrt;
+2:for all pi{pi}do
+3: for all breakpoint bdo
+4: Store ( xb, left slope kl
+b, right slope kr
+b)i npoints ;
+5: end for
+6: ACCURVE (points ); Accumulate slopes.
+7: dioptimal displacement;
+8: xi
+toptimal x-coordinate;
+9: yi
+ty-coordinate of pi;
+10:end for
+11:jarg min idi;
+12:Place ctat(xj
+t,yj
+t)and spread local cells;
+Fig. 4. Four types of displacement curves.
+local cells and ct. The construction of the curves is explained
+with more details later. The best position to insert ctwith an
+insertion point is the position with the lowest cost on the dis-
+placement curve. After inserting ctat the position with the
+lowest cost, local cells are shifted to the left or right when
+needed to legalize the placement (lines 11 and 12). If there
+is no valid insertion point, the size of rtis increased and the
+legalization for ctis conducted again. In practice, the window
+size is initialized as the size of ct, i.e., to check if ctcan be
+directly placed at its GP position without creating violations.After that, r
+texpands horizontally by six rows and vertically
+by four rows.
+In MLL, when a valid insertion point pis considered, there
+are only two types of displacement curves for any local cell as
+illustrated by types AandBin Fig. 4 in which the horizontal
+axis is the x-position of the target cell and the vertical axis
+is the displacement contributed by the local cell. The curves
+are of these shapes since we are measuring the distance from
+the original positions of the local cells before the target cellis inserted. Cells on the right of pin the window have dis-
+placement curves of type Abecause they may be pushed to
+the right of their original positions due to the insertion of thetarget cell at different horizontal positions. Similarly, cells on
+the left of pin the window have displacement curves of type
+Bbecause they may be pushed to the left due to the insertion.
+The turning points of these curves are called critical posi-
+tions as they start contributing to the cost in displacement if
+the target cell moves beyond the corresponding critical coor-
+dinate [18]. Since there are only these two types of curves
+in MLL, the optimal position to place the target cell can beobtained efficiently by finding the median of all these critical
+positions.In MGL, the scenario is more complicated since the dis-
+placement is counted w.r.t. the given GP position. There aretwo more types of displacement curves as illustrated by types
+ADin Fig. 4. Without loss of generality, we first discuss
+the local cells on the right of a valid insertion point p, where
+there are two possible types of curves Aand C. Cells with
+their GP positions at or on the left of their current positions
+have displacement curves type Abecause the target cell will
+only push them further to the right from their GP positions.
+For cells with their GP positions on the right of their current
+positions will have displacement curve type C. The turning
+points on these curves are either critical positions as in MLL
+(labeled by a) or positions computable from the GP positions
+of the local cells (labeled by c). We call all these turning points
+breakpoints . To prove the property of displacement curves, we
+introduce the definition of clusters as follows.
+Definition 1: Aright cluster is a set of cells that can move
+to the right together without creating overlaps with other cells.
+Specifically, a cell without adjacent cell on the right is a rightcluster by itself.
+Property 1: Every right cluster has a cell without adjacent
+cell on its right so that this cell is a right cluster itself.
+Property 2: Every right cluster has a cell without adjacent
+cell in the cluster on its left so that the cluster without this
+cell is still a right cluster.
+Lemma 1: If all cells in a window are placed at their
+optimal positions (i.e., total displacement is the smallest under
+the fixed row and fixed-order constraint) w.r.t. their GP posi-tions, the displacement curve for moving a right cluster to the
+right is piecewise linear, nondecreasing, and convex.
+Proof of Lemma 1: Based on the two properties, we prove
+it by mathematical induction. In the base step, if a single cell
+is a right cluster, the GP position of this cell will not be onthe right of its current position because, otherwise, we will
+have moved it further to the right. Therefore, its displacement
+curve is like type A, which is piecewise linear, nondecreasing,
+and convex. In the induction step, we assume that the lemma
+is correct for all right clusters of r-1 cells. Then, for any right
+cluster R
+ofrcells, we split it into a single cell clwithout
+adjacent cell in Ron its left and another right cluster R\{cl}
+with r-1 cells. If the displacement curve dlofclis of type
+A, the lemma is clearly correct for Rbecause adding two
+piecewise linear, convex, and nondecreasing curves will result
+in the same properties. If dlis of type C, then its slops are
+d/prime
+l=
+
+0, xt<a
+ml,a<xt<c
+ml,c<xt(3)
+where mlis the weight on the displacement of cl. Since all
+cells in Rare originally placed at optimal positions, the slope
+of the displacement curve dRof the cluster R\{cl}satisfies
+/braceleftbiggd/prime
+R=0,xt<a
+d/prime
+Rml,a<xt(4)
+because, otherwise, the whole right cluster Rshould have been
+moved further to the right. Hence, adding up dlanddRgives
+a piecewise linear, nondecreasing, and convex shape curve.
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 5 ---
+LIet al. : PIN-ACCESSIBLE LEGALIZATION FOR MIXED-CELL-HEIGHT CIRCUITS 147
+Algorithm 2 AcCurve
+Require: points ={(xb,kl
+b,kr
+b)|bis a breakpoint }.
+Ensure: Total displacement curve.
+1:Sort points byxb;
+2:for all xb1=xb2do
+3: kl
+b1kl
+b1+kl
+b2;
+4: kr
+b1kr
+b1+kr
+b2;
+5: Remove b2from points .
+6:end for
+7:for all breakpoint bdo
+8:  kl
+b/summationtext
+xi<xbkr
+i+/summationtext
+xixbkl
+i;
+9:  kr
+b/summationtext
+xixbkr
+i+/summationtext
+xi>xbkl
+i;
+10:end for
+Therefore, the lemma is correct for any right cluster of rcells,
+which accomplishes the proof.
+Theorem 1 states that the final displacement curve is con-
+vex if the local cells are originally at their optimal positions
+w.r.t. their GP positions, before the target cell is inserted.
+Theorem 1: Consider a window Wcontaining a target posi-
+tion(x/prime
+t,y/prime
+t),as e t Sof local cells lying completely inside W,
+and a target cell ctto be inserted into W. If all the cells in S
+are originally placed at their optimal positions (i.e., total dis-
+placement is the smallest under the fixed row and fixed-order
+constraint) w.r.t. their GP positions, the displacement curve,where the x-axis is the position of the target cell x
+t, obtained
+by adding up the displacement curves of all the cells in Sis
+piecewise linear and convex.
+Proof of Theorem 1: The total displacement curve is clearly
+piecewise linear because the displacement curve for each cell
+is piecewise linear and |S|is finite. The right (left) part
+of the displacement curve is accumulated by a set of right
+clusters so it is nondecreasing (nonincreasing) and convex.
+Therefore, the total displacement curve is piecewise linear andconvex.
+The precondition of having the local cells at optimal posi-
+tions w.r.t. their GP positions would require running an MCF
+(as described in Section III-C) before invoking MGL that
+will lengthen the running time. Therefore, in our implemen-tation, we compute the cost at each breakpoint to find the
+optimal position. Since the number of breakpoints is linear
+with the number of local cells, the optimal positions can befound in linear time, as shown in Algorithm 2. Given a set
+of breakpoints sorted by x-coordinate (line 1), we first merge
+breakpoints sharing the same x-coordinate by adding the slopes
+together (lines 26). For the total displacement curve, its left
+(right) slope at each breakpoint is the right slope sum of left
+(nonright) breakpoints adding the left slope sum of nonleft(right) breakpoints. Then, the optimal x-coordinate x
+b0is at
+the boundary of its feasible region or satisfies  kl
+b0 kr
+b00.
+B. Maximum Displacement Optimization
+In this section, we will present a maximum displacement
+optimization method in a legal placement. Recall that in MGL,each cell is processed sequentially and it will then be fixed to
+a row once placed. The maximum displacement can be furtherAlgorithm 3 Maximum Displacement Optimization
+Require: Cell list C.
+Ensure: Legal positions of C.
+1:while true do
+2: ctcell with max displacement;
+3: CTcell list with the same type and fence;
+4: if|CT|>s0then
+5: Sort CTby/vextendsingle/vextendsingle/vextendsinglexixt+x/prime
+t
+2/vextendsingle/vextendsingle/vextendsingle+/vextendsingle/vextendsingle/vextendsingleyiyt+y/prime
+t
+2/vextendsingle/vextendsingle/vextendsingle;
+6: CTtop-sofCT;
+7: ifct/CTthen
+8: CTCT{ct};
+9: end if
+10: end if
+11: Optimize CTby bipartite matching;
+12: ifmax displacement of CTis not changed then
+13: return ;
+14: end if
+15:end while
+reduced if the row assignments can be changed, especially for
+the cells being placed near the end of MGL. It is unavoidable
+to place them with large displacements if the regions around
+their GP locations are dense. Fig. 6(a) shows the displacementof a cell type in a fence region. Each rectangle represents a
+cell. Red cells are of the same type and gray cells are of other
+types. The long gray lines connect cells to their correspondingGP positions. Some cells are placed to even tens of rows away
+from their GP positions.
+To reduce the maximum displacement without introducing
+violations to the legal placement, we perform an iterative
+min-cost bipartite matching to optimize the maximum dis-
+placement. For each iteration, we regard the cell c
+twith the
+largest displacement as the target cell and reduce its dis-
+placement with the help of cells close to the current and
+GP positions of the target cell. Algorithm 3 shows the flowof the optimization. Cell list C
+TCis initialized by cells
+with the same type and fence region as ct(line 3). If |CT|
+is larger than a given number s0, only ctand the cells close
+to([(xt+x/prime
+t)/2],[(yt+y/prime
+t)/2]), the middle point of the cur-
+rent and GP positions of ct, are selected for fast running time
+(lines 410). Given a bipartite graph G=(CT,PT,CTPT)
+on the current positions PTPof the cells in PT, any cell
+ciCTcan take up the positions pj=(xj,yj)of another
+cellcjto minimize the maximum displacement without creat-
+ing any violations. The problem is to find a perfect matching
+SCTPTbetween cells and positions with the minimum
+total cost/summationtext
+(ci,pj)SDi,j, where Di,j=(|xjx/prime
+i|+|yjy/prime
+i|)and
+() is defined as a strictly increasing function such that it is
+linear when is small to preserve the average displacement.
+After a certain threshold of ,will increase rapidly in order
+to discourage large displacement. Here, we have
+()=/braceleftBigg,  0
+5
+4
+0,otherwise(5)
+where 0is the tolerable maximum displacement
+threshold. This min-cost perfect matching problem
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 6 ---
+148 IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, VOL. 41, NO. 1, JANUARY 2022
+can be optimally solved by formulating as an MCF
+problem [25].
+There are previous works that use bipartite matching
+in detailed placement to minimize HPWL but only those
+cells on independent nets can be optimized simultane-ously [26], [27]. Here, the cost function is defined in
+such a way that both the average and maximum displace-
+ment are handled and all selected cells can be optimizedsimultaneously.
+C. Fixed Row and Fixed-Order Optimization
+After the matching-based maximum displacement
+optimization, we perform a final postprocessing refinementto further reduce the maximum and average displacement
+by shifting the cells locally without changing the cell order
+and row assignments. Taking the objective of the totaldisplacement as an example, given a set of mmultirow
+height cells C={c
+i}, the problem can be formulated as
+follows:
+minxi/summationdisplay
+imixi (6)
+s.t. xi+wixj(i,j)E (6a)
+lixiriciC (6b)
+where miis the weight on the x-displacement xiof cell ci,
+wiis the width of ci,liandriare the left and right boundary
+of the row segment that cican horizontally shift inside, and E
+is the set of neighboring pairs where (i,j)Eif and only if
+ciis the left neighbor of cjon some rows. The left and right
+boundries of segments can be determined by core boundries,fence regions, or placement blockages.
+Equation (6) can be converted to a dual MCF problem and
+effectively solved [19], [20]. Compared to the formulationin [19], our transformation to MCF has three strengths.
+1) There are significantly fewer vertices in the flow
+network, which is more efficient.
+2) The maximum and average displacement are optimized
+simultaneously.
+3) Weight m
+iis set according to (2) but it is ignored in [19].
+We first split the x-displacement xiin (6) to a pair of
+variables x
+iandx+
+i
+max
+xi,x
+i,x+
+i/summationdisplay
+imi/parenleftbig
+x
+ix+
+i/parenrightbig
+(7)
+s.t. x
+ixix/prime
+ix+
+iciC (7a)
+x
+i0x+
+iciC (7b)
+xixjwi(i,j)E (7c)
+xiliciCL (7d)
+xiriciCR (7e)
+where CL(CR) is the set of left-most (right-most) cells in at
+least one of the segments.
+Note that (7) itself is not a dual of an MCF problem. As
+the dual LP of an MCF problem, each variable in the LP rep-
+resents a vertex in the MCF and each constraint in the LPrepresents an edge in the MCF, where the vertices of vari-
+ables with positive signs are sources of edges, the vertices ofvariables with negative signs are sinks of edges, and the con-
+stant is the cost of edges. To preserve the nature of an edgethat consists of a source and a sink, we introduce an auxiliary
+variable  x
+0representing the coordinate of the core origin in
+an auxiliary coordinate system. By substituting the coordinatesin the auxiliary coordinate system { x
+i, x
+i, x+
+i}for those in the
+core coordinate system {xi,x
+i,x+
+i},w eh a v e
+max
+ x0, xi, x
+i, x+
+i/summationdisplay
+imi/parenleftbig
+ x
+i x+
+i/parenrightbig
+(8)
+s.t.  x
+i xix/prime
+i x+
+iciC (8a)
+ x
+i x0 x+
+iciC (8b)
+ xi xjwi(i,j)E (8c)
+ xi x0liciCL (8d)
+ xi x0riciCR (8e)
+whose constraints have exactly one variable with positive sign
+and one variable with negative sign. Thus, its dual linear
+programming is an MCF problem
+min
+fQ=/summationdisplay
+i/parenleftBig
+x/prime
+i/parenleftbig
+f+
+if
+i/parenrightbig
+lifl
+i+rifr
+i/parenrightBig
+/summationdisplay
+(i,j)Ewifij (9)
+s.t. Fi=f+
+if
+i+fr
+ifl
+i
++/summationdisplay
+j:(i,j)Efij/summationdisplay
+k:(k,i)Efki=0ciC(9a)
+F0=/summationdisplay
+iFi=0 (9b)
+0f+
+i,f
+imiciC (9c)
+fl
+i,fr
+i0ciC (9d)
+fl
+i=0ciCCL (9e)
+fr
+i=0ciCCR (9f)
+fij0(i,j)E (9g)
+where {f}={ f
+i}{f+
+i}{fij}{fl
+i}{fr
+i}. After solving the
+MCF, the coordinates in the auxiliary coordinate system are the
+potential of vertices and the coordinates in the core coordinate
+system can be calculated by xi= xi x0,x
+i= x
+i x0,
+x+
+i= x+
+i x0. Note that each of the auxiliary vertices {v
+i}
+and{v+
+i}connects only two edges, which can be combined to
+form one edge. Hence, they can be eliminated. Overall, this isan MCF problem with m+1 vertices and 2 m+|C
+L|+|CR|+|E|
+edges where mis the number of cells, while the MCF in [19]
+has 3 m+2 vertices and 6 m+|E|edges. Our formulation is
+simpler and thus can be solved more efficiently.
+1) Extension Considering Maximum Displacement: The
+formulation above optimizes the total displacement. To con-sider the maximum displacement, we further introduce a pair
+of auxiliary variables 
+and+whose absolute values repre-
+sent the largest displacement of the cells to the left and to theright of the corresponding GP position. Thus, we extend 8 to
+consider a weighted sum as follows:
+max
+,+, x0, xi, x
+i, x+
+im0/parenleftbig
++/parenrightbig
++/summationdisplay
+imi/parenleftbig
+ x
+i x+
+i/parenrightbig
+(10)
+s.t.  xix/prime
+iyiciC (10a)
+ x0yiciC (10b)
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 7 ---
+LIet al. : PIN-ACCESSIBLE LEGALIZATION FOR MIXED-CELL-HEIGHT CIRCUITS 149
+Fig. 5. Example of fixed row and fixed-order optimization.
++ xix/prime
+i+yiciC (10c)
++ x0+yiciC (10d)
+(8a)(8e)
+where m0balances the maximum and the average displace-
+ment in the objective function and yiis the y-displacement
+of cell ci, which are constants since the row assignments will
+be preserved in this step. The dual LP is as follows:
+min
+fQ+/parenleftbig
+fp+fn/parenrightbig
+max
+iyi
++/summationdisplay
+i/parenleftbig
+x/prime
+i/parenleftbig
+fp
+ifn
+i/parenrightbig
+yi/parenleftbig
+fp
+i+fn
+i/parenrightbig/parenrightbig
+(11)
+s.t. Fi+fp
+ifn
+i=0,fp
+i,fn
+i0ciC (11a)
+F0+fnfp=0,0fp,fnm0 (11b)
+fp/summationdisplay
+ifp
+i=fn/summationdisplay
+ifn
+i=0 (11c)
+(9c)(9g)
+where fp,fn,{fp
+i}, and{fn
+i}are auxiliary variables for handling
+the maximum displacement.
+Fig. 5 shows an example. Cells c1andc2are single row
+while cell c3is double row. The corresponding flow graph is
+shown in Fig. 5(b). Vertices vz,vn, and vpare auxiliary nodes
+while each of the other nodes represents a cell in Fig. 5(a).
+The solid straight edges from vz(e.g., fl
+1) represent the flows
+for the constraints of the left boundary. The solid straight edge
+tovz(fr
+3) represents the flow for the constraints of the right
+boundary. The other solid straight edges (e.g., f13) illustrate
+the flows for the constraints between neighbouring cells. The
+solid curly edges (e.g., f
+i) represent the flows formulating theabsolute value. The dotted edges (e.g., fn) represent the flows
+for the formulation of the maximum displacement.
+To solve the MCF problem, we deploy a network simplex
+algorithm that performs O(mnNU )pivots and O(n)time per
+pivot in the worst-case scenario, where mand ndenote the
+number of nodes and arcs in the flow network, respectively, U
+denotes the maximum arc capacities, and Ndenotes the largest
+arc cost [28]. However, this bound does not reflect the typicalperformance of the algorithm in practice [29]. With the first
+eligible arc pivot rule, the algorithm can be much faster than
+this bound.
+D. Routability-Driven Refinement
+Edge spacing rules define the minimum distances between
+different types of cells. The method in Section III-B does notcreate violations to any edge spacing rules because only cells
+of the same type replace each other in the bipartite match-
+ing and all pairs of consecutive cell edges remain unchanged.For the MGL and the fixed row and fixed-order optimization,
+there are two kinds of cell moves. One is to horizontally
+shift cells to the left or right with row assignment and cellorder fixed, where the edge spacing is reserved between each
+pair of consecutive cells. The other is to insert a target cell,
+where the edge spacing is reserved when constructing insertionpoints.
+Pin access and pin short violations are caused by signal
+pins of cells sheltered by P/G rails or I/O pins so that no samelayer wire or upper layer via can access the pins without caus-
+ing design rule violations (DRVs). Due to limited numbers of
+lower layer I/O pins and resource reservation for their routing,
+we treat the regions below I/O pins in M1 or M2 as placement
+blockages. So the source of violations can be divided into twotypes: 1) overlaps with horizontal rails or 2) with vertical rails.
+In MGL (Section III-A), if an insertion point has a viola-
+tion with a horizontal rail, it will not be considered as a validinsertion point. On the contrary, violations with vertical rails
+are handled in a more detailed manner. When enumerating the
+insertion points in a window, local cells are moved to the left-most and right-most positions in the local region to validate the
+insertion points. After a local cell being moved to its left-most
+position, it moves back to the right until it has no violationwith a vertical rail; the opposite happens for right-most posi-
+tions. If the window accommodates no violation-free insertion
+points for both target cell and local cells, it is discarded anda larger window will be considered in the next iteration until
+the window covers the whole fence region. While evaluating
+an insertion point, the optimal position is chosen accord-ingly to the displacement curve. If there is a violation with
+vertical rails, a least-displaced-position without violation is
+selected.
+Maximum displacement optimization (Section III-B) does
+not create pin access or pin short violations. To avoid morepin access and pin short violations in the fixed row and fixed-
+order optimization (Section III-C), the cells will be restricted
+to a feasible range defined by the intersection of the rowsegment and the P/G rails. Thus, every cell has its left and
+right boundary constraints in the MCF, i.e., C
+L=CR=C.li
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 8 ---
+150 IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, VOL. 41, NO. 1, JANUARY 2022
+andriin the formulation are the left and right boundaries of
+cellcis feasible range, respectively.
+E. Multithread Implementation
+Since local windows that do not overlap with each other
+can be processed simultaneously, MGL is implemented withmultithreading to speed up processing. A scheduling step
+decides which local windows can be processed at the same
+time. The scheduler maintains a list L
+pcontaining 2-
+tuples of the target cell and its corresponding local window
+under processing. In each iteration, the scheduler selects
+a fixed number of these 2-tuples that do not have theirlocal windows overlapping with each other and pushes them
+into L
+p.
+Legalizers in the child threads process MGL whenever
+there is unprocessed 2-tuple in Lpand apply the legaliza-
+tion step. The scheduler switches to perform MGL as well
+when it finished scheduling. If MGL failed to insert the tar-
+get cell, the local window is expanded and the new 2-tuple
+of the target cell and the expanded local window will thenbe pushed into a waiting list L
+wfrom which the scheduler
+will select the 2-tuples for the next iteration. Since the sched-
+uler synchronizes all threads and the cell order in Lwis kept
+the same as the original cell order, the multithread imple-
+mentation is deterministic once the capacity of list Lpis
+determined.
+IV . E XPERIMENTAL RESULTS
+We implemented the proposed legalization algorithm for
+mixed-cell-height circuits in C ++ programming language.
+LEMON [25] is used as the MCF solver. We run all exper-
+iments on a 64-bit Linux machine with eight cores of IntelXeon 2.1-GHz CPUs and 64-GB RAM.
+A. ICCAD 2017 Benchmark Results
+In the first experiment, we compare with a binary from
+the first place of the ICCAD 2017 Contest [9] and a binary
+from the state of the art [17]. Eight threads are used for the
+proposed algorithm and both comparison algorithms to simu-late the Contest environment. We do not compare with [30]
+because the average displacement in its objective function does
+not consider the weights on cell numbers as (2) and thus,
+the results are biased toward single-row cells since, shown
+in Table I, at least 85% cells are single-row cells. Someother benchmark statistics are also shown in Table I, including
+design density and GP HPWL. Here, density is measured by
+the total cell area over the total free area.
+We evaluate the pin access violations with Innovus
+18.12 taking both Preroute DRC Violations and Pin Access
+Violations into count. We adopt the score function in the
+contest as much as possible to have a more comprehensive
+comparison:
+S=/parenleftbigg
+1+S
+hpwl+Np+Ne
+m/parenrightbigg/parenleftbigg
+1+max i{i}
+/Delta1/parenrightbigg
+Sam (12)TABLE I
+STATISTICS OF ICCAD 2017 B ENCHMARKS
+where Shpwl is the ratio of HPWL increase, Npand Neare
+the numbers of violations on pin access/short and edge spac-
+ing, mis the number of cells, displacements iandSamare
+calculated by (1) and (2), and /Delta1is 100 [9]. Note that the
+runtime scores are not included because they are measured
+w.r.t other teams. The penalties of maximum displacement and
+target utilization are not included because their exact defini-
+tions are not clear and a constant factor is not revealed. Theresults are listed in Table II where our proposed algorithm
+achieves 35% smaller average displacement and 13% shorter
+maximum displacement compared with the first place. Ourproposed algorithm also achieves 8% smaller average displace-
+ment and 4% longer maximum displacement compared with
+the state-of-the-art work. For routability-driven constraints, wehave no edge spacing violations while the first place produces
+nearly six thousand in one case. We also have significantly
+fewer pin access violations. Without counting the designs thatwe are violation free, the numbers of violations are reduced by
+398 times and 446 times on average, compared with the first
+place and the state of the art, respectively. In terms of S, our
+purposed method has 47% and 9% improvement on average.
+B. Modified ISPD 2015 Benchmark Results
+In the second experiment, we compare with the state-of-the-
+art placers [15], [16], [18]. The benchmarks are modified fromthe ISPD 2015 Contest [23] and provided by Chow et al. [18].
+10% of the cells were selected and converted to double
+height and half width. To be consistent with other works
+listed in Table III, we adapted our program to use total dis-
+placement as the objective function and ignored fences aswell as routability-driven constraints. Note that the results
+of [15], [18] are improved ones reported in [16]. We can see
+that we have improved over the previous published works by19%, 16%, and 8%, respectively, in total displacement.
+C. Tradeoff on Window Size
+In the third experiment, we verify the tradeoff between
+running time and solution quality on the expansion step ofwindow size. As shown in Table IV, a larger window size is
+beneficial on average displacement while a smaller window
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 9 ---
+LIet al. : PIN-ACCESSIBLE LEGALIZATION FOR MIXED-CELL-HEIGHT CIRCUITS 151
+TABLE II
+COMPARISON BETWEEN OURALGORITHM AND THE CHAMPION IN ICCAD 2017
+TABLE III
+COMPARISON BETWEEN OURALGORITHM AND STATE -OF-THE-ARTPLACERS
+size causes 2% degradation. On the other hand, performing
+MGL takes less time with a smaller window in most of the
+designs, except for dense regions where smaller windows need
+more expansion iterations. Therefore, this parameter is left
+viable for users to adjust based on site size and aspect ratio,cell size, core utilization, etc.
+D. Efficiency of Multithreading
+In the fourth experiment, we verify the efficiency of
+multithreaded MGL. Since the solutions are identical withdifferent numbers of threads and multithreading is only imple-
+mented for MGL, we only show the running time of MGL inTable V, where 1 .6,2.9, and 4 .5speedups are achieved
+with two, four, and eight threads, respectively.
+E. Effectiveness and Runtime Breakdown
+In the fifth experiment, we break down the effectiveness and
+running time of MGL and two postprocessing stages. Table VI
+lists the average and maximum displacement and running tim-ing for these three stages. We can see that the maximum
+displacement decreases by 66% through maximum displace-
+ment optimization and the average displacement decreases by1% through fixed row and fixed-order optimization. The table
+also shows that each of the three stages takes about one third of
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 10 ---
+152 IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, VOL. 41, NO. 1, JANUARY 2022
+TABLE IV
+TRADEOFF ON WINDOW SIZE
+TABLE V
+RUNNING TIME OF MULTITHREADED MGL
+the total running time on average but the maximum displace-
+ment optimization dominates in two congested designs. Fig. 6
+shows an example of the maximum displacement optimization
+in which red cells are of the same type while red lines con-
+nect cells to their corresponding GP positions. Cells with
+large displacement in Fig. 6(a) are moved to closer locationsin Fig. 6(b).
+F . Effectiveness of Pin Access Refinement
+In the sixth experiment, we evaluate the effectiveness of
+pin access refinement techniques. Table VII lists the average
+and maximum displacement and the numbers of inaccessible
+pins with the techniques turning on and off. We can see thatthe average and maximum displacement increase by 4% and
+5% through pin access refinement but numbers of inaccessi-
+ble pins reduce by more than a thousand times on average.In addition, we route the placement results with CUGR [31]
+and Dr. CU 2.0 [32], and evaluate the actual impact of pinTABLE VI
+EFFECTIVENESS AND RUNTIME BREAKDOWN
+Fig. 6. Maximum displacement optimization. (a) Before. (b) After.
+TABLE VII
+EFFECTIVENESS OF PINACCESS REFINEMENT
+access refinement on routing with the total number of DRVs.
+With refinement techniques, the total numbers of DRVs are
+reduced by 14% on average. The improvement is more signif-icant in designs with fewer DRVs. For other congest designs,
+the routers have trouble eliminating DRVs.
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 11 ---
+LIet al. : PIN-ACCESSIBLE LEGALIZATION FOR MIXED-CELL-HEIGHT CIRCUITS 153
+V. C ONCLUSION
+We presented a legalization method for mixed-cell-height
+circuits with consideration of routability constraints, such aspin access, pin short, edge spacing, and fence regions. We
+proposed an MGL that minimizes the total displacement of the
+cells within a window toward their given GP positions. We for-mulated and solved the maximum displacement optimization
+into by an MCF. Finally, we formulated the fixed row and
+fixed-order optimization problem with a weighted sum of themaximum and average displacement as objective into another
+MCF problem for further optimization. Comparing with the
+champion of the ICCAD 2017 Contest [9], we achieved 35%
+less average displacement, 13% less maximum displacement,
+and much fewer routability-driven violations. We also com-pared with the state-of-the-art work and achieved an 8%
+average displacement improvement.
+A
+CKNOWLEDGMENT
+The authors would like to thank Prof. Jianli Chen for helpful
+discussions and binary sharing of [16] and [17].
+REFERENCES
+[1] H. Li, W.-K. Chow, G. Chen, E. F.Y . Young, and B. Yu, Routability-
+driven and fence-aware legalization for mixed-cell-height circuits, in
+Proc. 55th Annu. Design Autom. Conf. (DAC) , San Francisco, CA, USA,
+2018, pp. 16.
+[2] H. Li et al. , Deep learning analysis for split manufactured lay-
+outs with routing perturbation, IEEE Trans. Comput.-Aided
+Design Integr. Circuits Syst. , early access, Nov. 11, 2020,
+doi: 10.1109/TCAD.2020.3037297 .
+[ 3 ] S .M .Y .S h e r a z i et al. , CFET standard-cell design down to 3Track
+height for node 3nm and below, in Proc. SPIECFET Design Process
+Technol.Co-Optim. Manuf. XIII , vol. 10962, 2019, Art. no. 1096206.
+[4] S.-H. Baek, H.-Y . Kim, Y .-K. Lee, D.-Y . Jin, S.-C. Park, and J.-D.
+Cho, Ultra-high density standard cell library using multi-height cell
+structure, in Proc. SPIE Smart Struct. Devices Syst. , vol. 7268, 2008,
+Art. no. 72680C.
+[5] C. Santos, R. Reis, G. Godoi, M. Barros, and F. Duarte, Multi-bit flip-
+flop usage impact on physical synthesis, in Proc. 25th Symp. Integr.
+Circuits Syst. Design (SBCCI) , 2012, pp. 16.
+[6] Y .-X. Chiang et al. , Designing and benchmarking of double-row height
+standard cells, in Proc. IEEE Comput. Soc. Annu. Symp. VLSI (ISVLSI) ,
+Hong Kong, China, 2018, pp. 6469.
+[7] D. D. Sherlekar, Cell architecture for increasing transistor size,
+U.S. Patent 8 631 374, Jan. 2014.
+[8] F. Gessler, P. Brisk, and M. Stojilovic, A shared-memory parallel imple-
+mentation of the RePlAce global cell placer, in Proc. 33rd Int. Conf.
+VLSI Design 19th Int. Conf. Embedded Syst. , 2020, pp. 7883.
+[9] N. K. Darav, I. S. Bustany, A. Kennings, and R. Mamidi, ICCAD-2017
+CAD contest in multi-deck standard cell legalization and benchmarks,
+inProc. IEEE/ACM Int. Conf. Comput.-Aided Design (ICCAD) , Irvine,
+CA, USA, 2017, pp. 867871.
+[10] M. Khasawneh and P. H. Madden, Hill climbing with trees: Detail
+placement for large windows, in Proc. Int. Symp. Phys. Design (ISPD) ,
+2020, pp. 916.
+[11] G. Wu and C. Chu, Detailed placement algorithm for VLSI design with
+double-row height standard cells, IEEE Trans. Comput.-Aided Design
+Integr. Circuits Syst. , vol. 35, no. 9, pp. 15691573, Sep. 2016.
+[12] S. A. Dobre, A. B. Kahng, and J. Li, Design implementation with non-
+integer multiple-height cells for improved design quality in advancednodes, IEEE Trans. Comput.-Aided Design Integr. Circuits Syst. ,
+vol. 37, no. 4, pp. 855868, Apr. 2018.
+[13] D. Hill, Method and system for high speed detailed placement of cells
+within an integrated circuit design, U.S. Patent 6 370 673, Apr. 2002,
+[14] P. Spindler, U. Schlichtmann, and F. M. Johannes, Abacus: Fast legal-
+ization of standard cell circuits with minimal movement, in Proc. Int.
+Symp. Phys. Design (ISPD) , 2008, pp. 4753.[15] C.-H. Wang et al. , An effective legalization algorithm for mixed-cell-
+height standard cells, in Proc. 22nd Asia South Pac. Design Autom.
+Conf. (ASP-DAC) , Chiba, Japan, 2017, pp. 450455.
+[16] J. Chen, Z. Zhu, W. Zhu, and Y .-W. Chang, Toward optimal legalization
+for mixed-cell-height circuit designs, in Proc. 54th ACM/EDAC/IEEE
+Design Autom. Conf. (DAC) , Austin, TX, USA, 2017, pp. 16.
+[17] Z. Zhu, J. Chen, W. Zhu, and Y .-W. Chang, Mixed-cell-height
+legalization considering technology and region constraints, IEEE
+Trans. Comput.-Aided Design Integr. Circuits Syst. , vol. 39, no. 12,
+pp. 51285141, Dec. 2020.
+[18] W.-K. Chow, C.-W. Pui, and E. F.Y . Young, Legalization algo-
+rithm for multiple-row height standard cell design, in Proc. 53nd
+ACM/EDAC/IEEE Design Autom. Conf. (DAC) , Austin, TX, USA, 2016,
+pp. 16.
+[19] Y . Lin
+et al. , MrDP: Multiple-row detailed placement of heterogeneous-
+sized cells for advanced nodes, IEEE Trans. Comput.-Aided Design
+Integr. Circuits Syst. , vol. 37, no. 6, pp. 12371250, Jun. 2018.
+[20] J. Vygen, Algorithms for detailed placement of standard cells, in Proc.
+Design Autom. Test Eur. (DATE) , Paris, France, 1998, pp. 321324.
+[21] S. I. Heo, A. B. Kahng, M. Kim, L. Wang, and C. Yang, Detailed
+placement for IR drop mitigation by power staple insertion in sub-10nmVLSI, in Proc. IEEE Design Autom. Test Eur. Conf. Exhibit. (DATE) ,
+Florence, Italy, 2019, pp. 830835.
+[22] Z. Zhu et al. , Mixed-cell-height legalization considering complex min-
+imum width constraints and half-row fragmentation effect, Integr. VLSI
+J., vol. 71, pp. 110, Mar. 2020.
+[23] I. S. Bustany, D. Chinnery, J. R. Shinnerl, and V . Yutsis, ISPD 2015
+benchmarks with fence regions and routing blockages for detailed-
+routing-driven placement, in Proc. Int. Symp. Phys. Design (ISPD) ,
+2015, pp. 157164.
+[24] V . Yutsis, I. S. Bustany, D. Chinnery, J. R. Shinnerl, and W.-H. Liu,
+ISPD 2014 benchmarks with sub-45nm technology rules for detailed-routing-driven placement, in Proc. Int. Symp. Phys. Design (ISPD) ,
+2014, pp. 161168.
+[25] P. Kovacs, Minimum-cost flow algorithms: An experimental evalua-
+tion, Optim. Methods Softw. , vol. 30, no. 1, pp. 94127, 2015.
+[26] T.-C. Chen, Z.-W. Jiang, T.-C. Hsu, H.-C. Chen, and Y .-W. Chang,
+NTUplace3: An analytical placer for large-scale mixed-size designs
+with preplaced blocks and density constraints, IEEE Trans. Comput.-
+Aided Design Integr. Circuits Syst. , vol. 27, no. 7, pp. 12281240,
+Jul. 2008.
+[27] G. Chen et al. , RippleFPGA: Routability-driven simultaneous packing
+and placement for modern FPGAs, IEEE Trans. Comput.-Aided Design
+Integr. Circuits Syst. , vol. 37, no. 10, pp. 20222035, Oct. 2018.
+[28] R. K. Ahuja, T. L. Magnanti, and J. B. Orlin, Chapter IV
+network flows, in Optimization (Handbooks in Operations
+Research and Management Science), vol. 1. Amsterdam, The
+Netherlands: Elsevier, 1989, pp. 211369. [Online]. Available:http://www.sciencedirect.com/science/article/pii/S0927050789010054
+[29] Z. Kiraly and P. Kovacs, Efficient implementations of minimum-cost
+flow algorithms, 2012. [Online]. Available: arXiv:1207.6381.
+[30] X. Li, J. Chen, W. Zhu, and Y .-W. Chang, Analytical mixed-
+cell-height legalization considering average and maximum movement
+minimization, in Proc. Int. Symp. Phys. Design (ISPD) , 2019,
+pp. 2734.
+[31] J. Liu, C.-W. Pui, F. Wang, and E. F.Y . Young, CUGR: Detailed-
+routability-driven 3D global routing with probabilistic resource model,
+inProc. IEEE 57th Annu. Design Autom. Conf. (DAC) , San Francisco,
+CA, USA, 2020, pp. 16.
+[32] H. Li, G. Chen, B. Jiang, J. Chen, and E. F.Y . Young, Dr. CU 2.0: A
+scalable detailed routing framework with correct-by-construction design
+rule satisfaction, in Proc. IEEE/ACM Int. Conf. Comput.-Aided Design
+(ICCAD) , Westminster, CO, USA, 2019, pp. 17.
+Haocheng Li received the B.Eng. degree from
+the School of Information and Communications
+Engineering, Xian Jiaotong University, Xian,
+China, in 2016, and the Ph.D. degree from theDepartment of Computer Science and Engineering,
+Chinese University of Hong Kong, Hong Kong, in
+2020.
+He joined Cadence Design System, San Jose,
+CA, USA, in 2021, where he is currently a Lead
+Software Engineer, working on routing algorithms
+with advanced technology nodes. His research
+interests include electronic design automation, hardware security, and combi-natorial optimization.
+Dr. Li received the best paper award in ISPD 2017.
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
+--- Page 12 ---
+154 IEEE TRANSACTIONS ON COMPUTER-AIDED DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS, VOL. 41, NO. 1, JANUARY 2022
+Wing-Kai Chow (Member, IEEE) received
+the B.Sc. degree from Hong Kong PolytechnicUniversity, Hong Kong, in 2009, and the M.Sc.degree in computer science and the Ph.D. degree in
+computer science and engineering from the Chinese
+University of Hong Kong, Hong Kong, in 2012 and2018, respectively.
+He joined Cadence Design System, Austin, TX,
+USA, in 2016, where he is currently a Principal
+Software Engineer, working on routing algorithmswith advanced technology nodes. His current
+research interest include clock network synthesis, and placement and routing
+algorithms.
+Gengjie Chen received the B.Sc. degree from
+the Department of Electronic and Communication
+Engineering, Sun Yat-sen University, Guangzhou,China, in 2015, and the Ph.D. degree from the
+Department of Computer Science and Engineering,
+Chinese University of Hong Kong, Hong Kong, in2019.
+His research interests include combinatorial
+optimization, numerical optimization, and electronic
+design automation.
+Dr. Chen received the ACM Outstanding Ph.D.
+Dissertation Award in Electronic Design Automation in 2020, the first place
+at ACM Student Research Competition in 2019, the first place at ACM SIGDA
+Student Research Competition in 2018, the best paper award at ICCAD 2017,the Hong Kong Ph.D. Fellowship from 2015 to 2019, and eight ICCAD/ISPDcontest awards.
+Bei Yu (Member, IEEE) received the Ph.D. degree
+from the University of Texas at Austin, Austin, TX,USA, in 2014.
+He is currently an Assistant Professor with the
+Department of Computer Science and Engineering,
+Chinese University of Hong Kong, Hong Kong.
+Dr. Yu received seven Best Paper Awards
+from ASPDAC 2021, ICTAI 2019, Integration,
+the VLSI Journal in 2018, ISPD 2017, SPIE
+Advanced Lithography Conference 2016, ICCAD2013, ASPDAC 2012, and six ICCAD/ISPD contest
+awards. He has served as TPC Chair of ACM/IEEE Workshop on Machine
+Learning for CAD, and in many journal editorial boards and conferencecommittees. He is an Editor of IEEE TCCPS Newsletter.
+Evangeline F.Y. Young (Senior Member, IEEE)
+received the B.Sc. degree in computer science from
+the Chinese University of Hong Kong (CUHK),Hong Kong, and the Ph.D. degree from theUniversity of Texas at Austin, Austin, TX, USA, in
+1999.
+She is currently a Professor with the Department
+of Computer Science and Engineering, CUHK. Herresearch interests include EDA, optimization, algo-
+rithms, and AI. Her research focuses on floor-
+planning, placement, routing, DFM, and EDA on
+physical design in general.
+Dr. Young research group has won best paper awards from ICCAD 2017,
+ISPD 2017, SLIP 2017, and FCCM 2018, and several championships andprizes in renown EDA contests, including the 20182020, 20152016, and20122013 CAD Contests at ICCAD, DAC 2012, and ISPD 20152020 and
+20102011. She has served on the organization committees of ICCAD, ISPD,
+ARC, and FPT and on the program committees of conferences, includingDAC, ICCAD, ISPD, ASP-DAC, SLIP, DATE, and GLSVLSI. She also servedon the editorial boards of IEEE T
+RANSACTIONS ON COMPUTER -AIDED
+DESIGN OF INTEGRATED CIRCUITS AND SYSTEMS ,ACM Transactions on
+Design Automation of Electronic Systems ,a n d Integration, the VLSI Journal .
+Authorized licensed use limited to: Nan Tong University. Downloaded on January 22,2022 at 04:27:32 UTC from IEEE Xplore.  Restrictions apply. 
