@@ -2,7 +2,7 @@
     "lef_input": "benchmarks/iccad2014/b19/techlib.lef",
     "def_input": "benchmarks/iccad2014/b19/b19.def",
     "verilog_input": "benchmarks/iccad2014/b19/b19.v",
-    "gpu": 0,
+    "gpu": 1,
     "num_bins_x": 512,
     "num_bins_y": 512,
     "global_place_stages": [

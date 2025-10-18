@@ -2,7 +2,7 @@
     "lef_input": "benchmarks/iccad2014/leon3mp/techlib.lef",
     "def_input": "benchmarks/iccad2014/leon3mp/leon3mp.def",
     "verilog_input": "benchmarks/iccad2014/leon3mp/leon3mp.v",
-    "gpu": 0,
+    "gpu": 1,
     "num_bins_x": 1024,
     "num_bins_y": 1024,
     "global_place_stages": [
