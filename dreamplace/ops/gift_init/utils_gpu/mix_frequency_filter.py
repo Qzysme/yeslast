@@ -48,7 +48,8 @@ def _sparsify_topk(adj_mat, k):
 class GiFt_GPU(object):
     def __init__(self, adj_mat, device):
         self.adj_mat = adj_mat
-        self.device = device 
+        self.device = device
+        self.norm_adj_torch = None
 
     def train(self, sigma):
 
@@ -65,20 +66,25 @@ class GiFt_GPU(object):
         norm_adj = norm_adj.dot(d_mat)
         self.norm_adj = norm_adj  # (D^-0.5(A+sigmaI)D^-0.5)
         self.d_mat = d_mat
+        self.norm_adj_torch = None  # invalidate cached tensor
         # self.norm_adj = norm_adj.tocsc()  # (D^-0.5(A+sigmaI)D^-0.5)
         # self.d_mat = d_mat.tocsc()
         end = time.time()
         # print('training time', end - start)
 
-    def get_cell_position(self, k, cell_pos):
-        norm_adj = self.norm_adj
-        trainAdj = norm_adj.tocoo()
-        edge_index = np.vstack((trainAdj.row, trainAdj.col)).transpose()
-        edge_index = torch.from_numpy(edge_index).long()
-        edge_index = edge_index.t().to(self.device)
-        edge_weight = torch.from_numpy(trainAdj.data).float().to(self.device)
+    def _get_torch_norm_adj(self):
+        if self.norm_adj_torch is None:
+            train_adj = self.norm_adj.tocoo()
+            edge_index = np.vstack((train_adj.row, train_adj.col))
+            edge_index = torch.from_numpy(edge_index).long().to(self.device)
+            edge_weight = torch.from_numpy(train_adj.data).float().to(self.device)
+            self.norm_adj_torch = torch.sparse.FloatTensor(
+                edge_index, edge_weight, torch.Size(train_adj.shape)
+            ).coalesce()
+        return self.norm_adj_torch
 
-        norm_adj = torch.sparse.FloatTensor(edge_index,edge_weight).to(self.device)
+    def get_cell_position(self, k, cell_pos):
+        norm_adj = self._get_torch_norm_adj()
         for _ in range(k):
             start = time.time()
             cell_pos = torch.sparse.mm(norm_adj, cell_pos)
@@ -101,7 +107,7 @@ class GiFtPlus_GPU(GiFt_GPU):
     def get_cell_position_with_boundaries(
         self, k, cell_pos, fixed_locations, projection_steps=0
     ):
-        norm_adj = self.norm_adj
+        norm_adj = self._get_torch_norm_adj()
         fixed_mask = self.fixed_mask_tensor
         for _ in range(k):
             cell_pos = torch.sparse.mm(norm_adj, cell_pos)
@@ -118,7 +124,7 @@ class GiFtPlus_GPU(GiFt_GPU):
     def refine_with_boundaries(self, cell_pos, fixed_locations, iterations):
         if iterations <= 0:
             return cell_pos
-        norm_adj = self.norm_adj
+        norm_adj = self._get_torch_norm_adj()
         fixed_mask = self.fixed_mask_tensor
         for _ in range(iterations):
             cell_pos = torch.sparse.mm(norm_adj, cell_pos)
